@@ -64,6 +64,7 @@ namespace ros_cartesian_manager
   struct ManagerConfig
   {
     double update_rate_hz{100.0};
+    double hybrid_frame_cone_angle_deg{5.0};
     TopicConfig topics;
     FrameConfig frames;
     std::vector<InputConfig> inputs;

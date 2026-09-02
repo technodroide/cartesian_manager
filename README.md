@@ -61,7 +61,7 @@ cartesian_manager/
 Normal Cartesian command flow:
 
 ```text
-joystick / visual-servoing TwistStamped
+joystick CartesianVelocityCommand / visual-servoing TwistStamped
         |
         v
 CartesianManagerROS subscribers
@@ -165,7 +165,7 @@ Default topics from `bringup/config/explorer_params.yaml`:
 
 | Topic | Type | Direction | Meaning |
 | --- | --- | --- | --- |
-| `/joystick_cartesian_command` | `geometry_msgs/msg/TwistStamped` | input | Joystick Cartesian velocity command. |
+| `/joystick_cartesian_command` | `extender_msgs/msg/CartesianVelocityCommand` | input | Joystick Cartesian velocity command with an angular orientation-frame selector. |
 | `/visual_servoing_cartesian_command` | `geometry_msgs/msg/TwistStamped` | input | Visual-servoing Cartesian velocity command. |
 | `/mode_request` | `std_msgs/msg/String` | input | Mode selection request. |
 | `/ee_pose` | `geometry_msgs/msg/PoseStamped` | input | Current end-effector pose from `qontrol_controller`. |
@@ -210,6 +210,7 @@ The main groups are:
 - `update_rate_hz`
 - `output_frame_id`
 - `default_input_frame_id`
+- `hybrid_frame_cone_angle_deg`
 - `topics`
 - `inputs`
 - `shapers`
@@ -221,7 +222,18 @@ The node validates runtime parameter updates. Invalid updates are rejected by th
 
 Input Cartesian commands must already be in `default_input_frame_id`.
 
-There is no TF conversion in this package. If a `TwistStamped` has an empty `header.frame_id`, it is treated as `default_input_frame_id`. If it has a different frame, the command is rejected.
+There is no TF conversion in this package. If an input message has an empty `header.frame_id`, it is
+treated as `default_input_frame_id`. If it has a different frame, the command is rejected.
+
+Joystick commands additionally select how their angular vector is mapped into the base frame:
+
+- `base_frame`: use the angular vector unchanged.
+- `effector_frame`: rotate it by the latest end-effector orientation.
+- `hybrid_frame`: use the stateful tool-Z hybrid frame with the configured anti-singularity cone.
+
+Linear joystick velocity is never rotated. Effector and hybrid commands are rejected until a valid
+end-effector pose in `default_input_frame_id` has been received. The default hybrid cone half-angle
+is 5 degrees and can be changed with `hybrid_frame_cone_angle_deg`.
 
 ## Joint Targets
 
@@ -279,4 +291,3 @@ This keeps joint limits and QP constraints active while moving to a target.
 For extension details, see:
 
 - `docs/technical_guide.md`
-

@@ -37,6 +37,7 @@ namespace manager_core
     void disableInput(InputSource source);
 
     bool setInputCommand(InputSource source, const CartesianVelocity &command, double stamp_sec);
+    void clearInputCommand(InputSource source);
     std::vector<InputSource> getValidInputSources(double now_sec) const;
 
     bool setMode(const std::string &mode_request);

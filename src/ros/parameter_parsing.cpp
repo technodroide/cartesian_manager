@@ -196,6 +196,13 @@ namespace ros_cartesian_manager
     requirePositive(config.update_rate_hz, "update_rate_hz");
     requireAtMost(config.update_rate_hz, kMaxUpdateRateHz, "update_rate_hz");
 
+    config.hybrid_frame_cone_angle_deg = params.hybrid_frame_cone_angle_deg;
+    requirePositive(config.hybrid_frame_cone_angle_deg, "hybrid_frame_cone_angle_deg");
+    if (config.hybrid_frame_cone_angle_deg >= 90.0)
+    {
+      throw std::invalid_argument("hybrid_frame_cone_angle_deg must be < 90.0");
+    }
+
     config.topics.joystick_command = params.topics.joystick_command;
     config.topics.visual_servoing_command = params.topics.visual_servoing_command;
     config.topics.mode_request = params.topics.mode_request;

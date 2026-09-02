@@ -1,12 +1,14 @@
 #include "cartesian_manager/ros/cartesian_manager.hpp"
 
 #include <chrono>
+#include <cmath>
 #include <cstddef>
 #include <optional>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
+#include "extender_msgs/msg/cartesian_velocity_command.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "geometry_msgs/msg/twist_stamped.hpp"
 #include "rcl_interfaces/msg/set_parameters_result.hpp"
@@ -22,6 +24,8 @@ namespace ros_cartesian_manager
     constexpr const char *kJointTargetCommandPublisher = "joint_target_command";
     constexpr const char *kBehaviourPassthroughMode = "behaviour/passthrough";
     constexpr const char *kJointTargetModePrefix = "behaviour/joint_target/";
+    constexpr double kPi = 3.14159265358979323846;
+    constexpr double kQuaternionEpsilon = 1e-12;
 
     std::chrono::nanoseconds timerPeriod(double update_rate_hz)
     {
@@ -122,6 +126,10 @@ namespace ros_cartesian_manager
         else if (name == "default_input_frame_id")
         {
           params.default_input_frame_id = param.as_string();
+        }
+        else if (name == "hybrid_frame_cone_angle_deg")
+        {
+          params.hybrid_frame_cone_angle_deg = param.as_double();
         }
         else if (name == "topics.joystick_command")
         {
@@ -232,6 +240,58 @@ namespace ros_cartesian_manager
           Eigen::Vector3d(msg.twist.angular.x, msg.twist.angular.y, msg.twist.angular.z);
       command.frame_id = frameOrDefault(msg.header.frame_id, default_frame_id);
       return command;
+    }
+
+    manager_core::CartesianVelocity twistToCommand(
+        const extender_msgs::msg::CartesianVelocityCommand &msg,
+        const std::string &default_frame_id, const Eigen::Quaterniond &current_orientation,
+        double hybrid_frame_cone_angle_rad,
+        manager_core::HybridOrientationFrame &hybrid_orientation_frame)
+    {
+      manager_core::CartesianVelocity command;
+      command.linear = Eigen::Vector3d(msg.twist.linear.x, msg.twist.linear.y, msg.twist.linear.z);
+      const Eigen::Vector3d angular_input(msg.twist.angular.x, msg.twist.angular.y,
+                                          msg.twist.angular.z);
+      command.angular = manager_core::mapAngularInputToBase(
+          msg.orientation_frame_id, current_orientation, angular_input,
+          hybrid_frame_cone_angle_rad, 0.0, hybrid_orientation_frame);
+      command.frame_id = frameOrDefault(msg.header.frame_id, default_frame_id);
+      return command;
+    }
+
+    bool isSupportedOrientationFrame(const std::string &orientation_frame_id)
+    {
+      using Command = extender_msgs::msg::CartesianVelocityCommand;
+      return orientation_frame_id == Command::BASE_FRAME ||
+             orientation_frame_id == Command::EFFECTOR_FRAME ||
+             orientation_frame_id == Command::HYBRID_FRAME;
+    }
+
+    bool requiresEndEffectorPose(const std::string &orientation_frame_id)
+    {
+      using Command = extender_msgs::msg::CartesianVelocityCommand;
+      return orientation_frame_id == Command::EFFECTOR_FRAME ||
+             orientation_frame_id == Command::HYBRID_FRAME;
+    }
+
+    bool isValidQuaternion(const Eigen::Quaterniond &orientation)
+    {
+      return std::isfinite(orientation.w()) && std::isfinite(orientation.x()) &&
+             std::isfinite(orientation.y()) && std::isfinite(orientation.z()) &&
+             orientation.norm() > kQuaternionEpsilon;
+    }
+
+    std::optional<double> inputTimeoutSec(const ManagerConfig &config,
+                                          manager_core::InputSource source)
+    {
+      for (const auto &input : config.inputs)
+      {
+        if (input.source == source)
+        {
+          return input.timeout_sec;
+        }
+      }
+      return std::nullopt;
     }
 
     geometry_msgs::msg::TwistStamped commandToMsg(const manager_core::CartesianVelocity &command,
@@ -354,6 +414,9 @@ namespace ros_cartesian_manager
                                         !usedTopicsEqual(previous_config.topics, config.topics);
     const bool timer_rate_changed =
         force_rebuild || previous_config.update_rate_hz != config.update_rate_hz;
+    const bool hybrid_cone_changed =
+        force_rebuild || previous_config.hybrid_frame_cone_angle_deg !=
+                             config.hybrid_frame_cone_angle_deg;
 
     config_ = config;
 
@@ -368,11 +431,23 @@ namespace ros_cartesian_manager
       if (input_frame_changed || input_sources_changed)
       {
         manager_.clearInputChannels();
+        hybrid_orientation_frame_.reset();
+        last_joystick_receipt_sec_.reset();
+        last_orientation_frame_id_.clear();
+        if (input_frame_changed)
+        {
+          ee_pose_received_ = false;
+        }
       }
       for (const auto &input : config_.inputs)
       {
         manager_.addInputChannel(input.source, input.timeout_sec, input.enabled);
       }
+    }
+
+    if (hybrid_cone_changed)
+    {
+      hybrid_orientation_frame_.reset();
     }
 
     if (ros_interfaces_changed)
@@ -480,6 +555,31 @@ namespace ros_cartesian_manager
                                  msg.pose.orientation.y, msg.pose.orientation.z);
           robot_context_.ee_pose.frame_id =
               frameOrDefault(msg.header.frame_id, config_.frames.default_input_frame_id);
+          const bool pose_is_valid = isValidQuaternion(robot_context_.ee_pose.orientation) &&
+                                     robot_context_.ee_pose.frame_id ==
+                                         config_.frames.default_input_frame_id;
+          if (!pose_is_valid)
+          {
+            if (ee_pose_received_)
+            {
+              hybrid_orientation_frame_.reset();
+            }
+            ee_pose_received_ = false;
+            if (requiresEndEffectorPose(last_orientation_frame_id_))
+            {
+              manager_.clearInputCommand(manager_core::InputSource::JOYSTICK);
+              last_joystick_receipt_sec_.reset();
+              last_orientation_frame_id_.clear();
+            }
+            RCLCPP_WARN_THROTTLE(
+                get_logger(), *get_clock(), 5000,
+                "Ignoring end-effector pose with an invalid orientation or frame '%s'",
+                robot_context_.ee_pose.frame_id.c_str());
+          }
+          else
+          {
+            ee_pose_received_ = true;
+          }
         });
 
     topic_manager_.addSubscriber<geometry_msgs::msg::TwistStamped>(
@@ -512,11 +612,60 @@ namespace ros_cartesian_manager
 
     if (hasInputSource(config_, manager_core::InputSource::JOYSTICK))
     {
-      topic_manager_.addSubscriber<geometry_msgs::msg::TwistStamped>(
+      topic_manager_.addSubscriber<extender_msgs::msg::CartesianVelocityCommand>(
           "joystick_command", config_.topics.joystick_command,
-          [this](const geometry_msgs::msg::TwistStamped &msg) {
+          [this](const extender_msgs::msg::CartesianVelocityCommand &msg) {
             const auto now_sec = topic_manager_.nowSec();
-            const auto command = twistToCommand(msg, config_.frames.default_input_frame_id);
+            const auto input_frame_id =
+                frameOrDefault(msg.header.frame_id, config_.frames.default_input_frame_id);
+            if (input_frame_id != config_.frames.default_input_frame_id)
+            {
+              RCLCPP_WARN_THROTTLE(
+                  get_logger(), *get_clock(), 5000,
+                  "Ignoring joystick command in frame '%s'; expected input frame '%s'",
+                  input_frame_id.c_str(), config_.frames.default_input_frame_id.c_str());
+              return;
+            }
+
+            if (!isSupportedOrientationFrame(msg.orientation_frame_id))
+            {
+              RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
+                                   "Ignoring joystick command with invalid orientation frame '%s'",
+                                   msg.orientation_frame_id.c_str());
+              return;
+            }
+
+            if (requiresEndEffectorPose(msg.orientation_frame_id) && !ee_pose_received_)
+            {
+              RCLCPP_WARN_THROTTLE(
+                  get_logger(), *get_clock(), 5000,
+                  "Ignoring %s joystick command until a valid end-effector pose is received",
+                  msg.orientation_frame_id.c_str());
+              return;
+            }
+
+            const auto joystick_timeout =
+                inputTimeoutSec(config_, manager_core::InputSource::JOYSTICK);
+            if (last_joystick_receipt_sec_ && joystick_timeout &&
+                now_sec - *last_joystick_receipt_sec_ > *joystick_timeout)
+            {
+              hybrid_orientation_frame_.reset();
+            }
+
+            using Command = extender_msgs::msg::CartesianVelocityCommand;
+            if (msg.orientation_frame_id != last_orientation_frame_id_ &&
+                (msg.orientation_frame_id == Command::HYBRID_FRAME ||
+                 last_orientation_frame_id_ == Command::HYBRID_FRAME))
+            {
+              hybrid_orientation_frame_.reset();
+            }
+
+            const double hybrid_cone_rad =
+                config_.hybrid_frame_cone_angle_deg * kPi / 180.0;
+            const auto command =
+                twistToCommand(msg, config_.frames.default_input_frame_id,
+                               robot_context_.ee_pose.orientation, hybrid_cone_rad,
+                               hybrid_orientation_frame_);
             if (!manager_.setInputCommand(manager_core::InputSource::JOYSTICK, command,
                                           stampSec(msg.header.stamp, now_sec)))
             {
@@ -524,7 +673,10 @@ namespace ros_cartesian_manager
                   get_logger(), *get_clock(), 5000,
                   "Ignoring joystick command in frame '%s'; expected input frame '%s'",
                   command.frame_id.c_str(), config_.frames.default_input_frame_id.c_str());
+              return;
             }
+            last_joystick_receipt_sec_ = now_sec;
+            last_orientation_frame_id_ = msg.orientation_frame_id;
           });
     }
 

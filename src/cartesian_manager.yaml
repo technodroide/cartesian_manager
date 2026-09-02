@@ -10,7 +10,11 @@ cartesian_manager:
   default_input_frame_id:
     type: string
     default_value: "base_link"
-    description: "Required frame for input commands. Empty TwistStamped header.frame_id values are treated as this frame; other frames are rejected without TF conversion."
+    description: "Required physical frame for input commands. Empty header.frame_id values are treated as this frame; other frames are rejected without TF conversion."
+  hybrid_frame_cone_angle_deg:
+    type: double
+    default_value: 5.0
+    description: "Hybrid orientation-frame anti-singularity cone half-angle in degrees. Must be > 0 and < 90."
 
   topics:
     joystick_command:

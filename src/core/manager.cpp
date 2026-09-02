@@ -78,6 +78,11 @@ namespace manager_core
     return input_manager_.setCommand(source, command, stamp_sec);
   }
 
+  void Manager::clearInputCommand(InputSource source)
+  {
+    input_manager_.clearCommand(source);
+  }
+
   std::vector<InputSource> Manager::getValidInputSources(double now_sec) const
   {
     return input_manager_.getValidSources(now_sec);

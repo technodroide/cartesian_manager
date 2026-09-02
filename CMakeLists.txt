@@ -8,6 +8,7 @@ endif()
 # find dependencies
 find_package(ament_cmake REQUIRED)
 find_package(Eigen3 REQUIRED)
+find_package(extender_msgs REQUIRED)
 find_package(generate_parameter_library REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(rclcpp REQUIRED)
@@ -26,6 +27,7 @@ add_library(${PROJECT_NAME}_ros
 )
 
 add_library(${PROJECT_NAME}_core
+  src/core/hybrid_orientation_frame.cpp
   src/core/input_manager.cpp
   src/core/manager.cpp
   src/core/shapers/geometric/jaco.cpp
@@ -49,6 +51,7 @@ target_include_directories(${PROJECT_NAME}_ros PUBLIC
 )
 ament_target_dependencies(${PROJECT_NAME}_ros
   Eigen3
+  extender_msgs
   generate_parameter_library
   geometry_msgs
   rclcpp
@@ -102,6 +105,7 @@ ament_export_libraries(${PROJECT_NAME}_core ${PROJECT_NAME}_ros)
 ament_export_targets(export_${PROJECT_NAME})
 ament_export_dependencies(
   Eigen3
+  extender_msgs
   generate_parameter_library
   geometry_msgs
   rclcpp
@@ -110,7 +114,22 @@ ament_export_dependencies(
 )
 
 if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
   find_package(ament_lint_auto REQUIRED)
+
+  ament_add_gtest(test_hybrid_orientation_frame
+    test/test_hybrid_orientation_frame.cpp
+  )
+  target_link_libraries(test_hybrid_orientation_frame
+    ${PROJECT_NAME}_core
+  )
+
+  ament_add_gtest(test_cartesian_manager_orientation
+    test/test_cartesian_manager_orientation.cpp
+  )
+  target_link_libraries(test_cartesian_manager_orientation
+    ${PROJECT_NAME}_ros
+  )
   # the following line skips the linter which checks for copyrights
   # comment the line when a copyright and license is added to all source files
   set(ament_cmake_copyright_FOUND TRUE)

@@ -39,6 +39,7 @@ cartesian_manager:
     update_rate_hz: 100.0
     output_frame_id: base_link
     default_input_frame_id: base_link
+    hybrid_frame_cone_angle_deg: 5.0
 
     topics:
       joystick_command: /joystick_cartesian_command
