@@ -1,0 +1,114 @@
+controller_manager:
+  ros__parameters:
+    update_rate: 1000  # Hz
+
+    qontrol_explorer:
+      type: qontrol_controller/QontrolVelocityController
+      auto_start: false
+
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+
+    gripper_controller:
+      type: forward_command_controller/ForwardCommandController
+      auto_start: false
+
+    fault_controller:
+      type: picknik_reset_fault_controller/PicknikResetFaultController
+
+qontrol_explorer:
+  ros__parameters:
+    # Base parameters
+    robot_description_origin: robot_state_publisher
+    tip_frame: end_effector_link
+    root_frame: base_link
+    state_interface:
+      - position
+      - velocity
+      - effort
+    robot_command: position
+
+    # Velocity parameters
+    command_max_linear_velocity: 0.05
+    topic_max_linear_velocity: /explorer_user_interfaces/rqt_armcontrol/max_linear_speed
+    command_max_angular_velocity: 1.0
+    topic_max_angular_velocity: /explorer_user_interfaces/rqt_armcontrol/max_angular_speed
+    input_topic_name: /cartesian_command
+    regularisation_weight: 1e-2
+    topic_control_frame: /explorer_user_interfaces/rqt_armcontrol/control_frame_selection
+    joint_target_topic_name: /joint_target_command
+    joint_target_gain: 1.0
+    joint_target_max_velocity: 0.2
+    joint_target_tolerance: 0.05
+    joint_target_task_weight: 1.0
+
+gripper_controller:
+  ros__parameters:
+    joints: 
+      - robotiq_85_left_knuckle_joint
+    interface_name: position
+
+joint_state_broadcaster:
+  ros__parameters:
+    joints:
+      - joint_1
+      - joint_2
+      - joint_3
+      - joint_4
+      - joint_5
+      - joint_6
+      - joint_7
+      - robotiq_85_left_knuckle_joint 
+
+cartesian_manager:
+  ros__parameters:
+    update_rate_hz: 100.0
+    output_frame_id: base_link
+    default_input_frame_id: base_link
+
+    topics:
+      joystick_command: /joystick_cartesian_command
+      visual_servoing_command: /visual_servoing_cartesian_command
+      mode_request: /mode_request
+      ee_pose: /ee_pose
+      ee_vel: /ee_velocity
+      ee_jac: /ee_jac
+      joint_states: /joint_states
+      joint_target_command: /joint_target_command
+      output_command: /cartesian_command
+
+    inputs:
+      sources:
+        - joystick
+      joystick:
+        timeout_sec: 0.2
+        enabled: true
+      visual_servoing:
+        timeout_sec: 0.2
+        enabled: true
+
+    shapers:
+      jaco:
+        min_radius: 0.05
+        max_angular_velocity: 0.4
+      snake:
+        gain: 3.0
+
+    behaviours:
+      joint_targets:
+        joint_names:
+          - joint_1
+          - joint_2
+          - joint_3
+          - joint_4
+          - joint_5
+          - joint_6
+        target_names:
+          - home
+        positions:
+          - 2.5
+          - 0.3
+          - -2.4
+          - 2.97
+          - 1.2
+          - -0.5
