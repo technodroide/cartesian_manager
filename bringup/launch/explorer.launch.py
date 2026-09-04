@@ -11,6 +11,7 @@ def generate_launch_description():
     gui = LaunchConfiguration("gui")
     use_simulation = LaunchConfiguration("use_simulation")
     joystick_config_file = LaunchConfiguration("joystick_config_file")
+    publish_ee_pose_from_tf = LaunchConfiguration("publish_ee_pose_from_tf")
 
     use_actuator_interface = PythonExpression([
         "'false' if '", use_simulation, "' == 'true' else 'true'"
@@ -35,6 +36,11 @@ def generate_launch_description():
                 "joystick_3d.yaml",
             ]),
             description="Joystick mapper parameter file.",
+        ),
+        DeclareLaunchArgument(
+            "publish_ee_pose_from_tf",
+            default_value="true",
+            description="Publish /ee_pose from TF until qontrol_controller provides it.",
         ),
     ]
 
@@ -100,6 +106,15 @@ def generate_launch_description():
         parameters=[controller_config],
     )
 
+    tf_pose_publisher_node = Node(
+        package="cartesian_manager",
+        executable="tf_pose_publisher_node",
+        name="tf_pose_publisher",
+        output="screen",
+        parameters=[controller_config, {"use_sim_time": use_simulation}],
+        condition=IfCondition(publish_ee_pose_from_tf),
+    )
+
     joy_node = Node(
         package="joy",
         executable="joy_node",
@@ -129,6 +144,7 @@ def generate_launch_description():
         robot_hardware,
         delayed_spawner_qontrol,
         spawner_gripper_controller,
+        tf_pose_publisher_node,
         manager_node,
         joy_node,
         joystick_mapper_launch,

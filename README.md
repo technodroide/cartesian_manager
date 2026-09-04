@@ -40,6 +40,7 @@ cartesian_manager/
     ros/
       cartesian_manager.hpp
       parameter_parsing.hpp
+      tf_pose_publisher.hpp
       topic_manager.hpp
   src/
     cartesian_manager.yaml
@@ -53,6 +54,8 @@ cartesian_manager/
       cartesian_manager.cpp
       main.cpp
       parameter_parsing.cpp
+      tf_pose_publisher.cpp
+      tf_pose_publisher_main.cpp
       topic_manager.cpp
 ```
 
@@ -150,6 +153,7 @@ The launch file starts:
 - the Explorer simulation or hardware base launch,
 - `qontrol_explorer`,
 - the gripper controller,
+- `tf_pose_publisher_node`, which temporarily publishes `/ee_pose` from TF,
 - `cartesian_manager_node`,
 - `joy_node`,
 - `joystick_mapper`.
@@ -168,7 +172,7 @@ Default topics from `bringup/config/explorer_params.yaml`:
 | `/joystick_cartesian_command` | `extender_msgs/msg/CartesianVelocityCommand` | input | Joystick Cartesian velocity command with an angular orientation-frame selector. |
 | `/visual_servoing_cartesian_command` | `geometry_msgs/msg/TwistStamped` | input | Visual-servoing Cartesian velocity command. |
 | `/mode_request` | `std_msgs/msg/String` | input | Mode selection request. |
-| `/ee_pose` | `geometry_msgs/msg/PoseStamped` | input | Current end-effector pose from `qontrol_controller`. |
+| `/ee_pose` | `geometry_msgs/msg/PoseStamped` | input | Current end-effector pose. The Explorer launch currently supplies it from TF; Qontrol can publish the same interface later. |
 | `/ee_velocity` | `geometry_msgs/msg/TwistStamped` | input | Current end-effector velocity from `qontrol_controller`. |
 | `/ee_jac` | `std_msgs/msg/Float64MultiArray` | input | Current end-effector Jacobian. |
 | `/joint_states` | `sensor_msgs/msg/JointState` | input | Current joint state. |
@@ -218,12 +222,31 @@ The main groups are:
 
 The node validates runtime parameter updates. Invalid updates are rejected by the ROS parameter callback before they are applied internally.
 
+The independent `tf_pose_publisher_node` parameters are:
+
+- `base_frame_id` (default `base_link`)
+- `effector_frame_id` (default `tool0`)
+- `output_topic` (default `/ee_pose`)
+- `publish_rate_hz` (default `100.0`)
+
+It looks up the latest `base_frame_id <- effector_frame_id` transform and publishes it as a
+normalized `PoseStamped`. Missing or invalid transforms are skipped with a throttled warning.
+
+The Explorer launch enables this temporary adapter by default. Once Qontrol publishes `/ee_pose`,
+disable the adapter so that only one node publishes the pose:
+
+```bash
+ros2 launch cartesian_manager explorer.launch.py publish_ee_pose_from_tf:=false
+```
+
 ## Frames
 
 Input Cartesian commands must already be in `default_input_frame_id`.
 
-There is no TF conversion in this package. If an input message has an empty `header.frame_id`, it is
-treated as `default_input_frame_id`. If it has a different frame, the command is rejected.
+Cartesian Manager itself does not perform TF conversion. If an input message has an empty
+`header.frame_id`, it is treated as `default_input_frame_id`. If it has a different frame, the
+command is rejected. The standalone TF pose adapter only supplies the `/ee_pose` input and remains
+independent of command conversion.
 
 Joystick commands additionally select how their angular vector is mapped into the base frame:
 

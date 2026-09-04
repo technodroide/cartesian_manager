@@ -14,6 +14,7 @@ find_package(geometry_msgs REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(tf2_ros REQUIRED)
 
 generate_parameter_library(
   cartesian_manager_parameters
@@ -32,6 +33,20 @@ add_library(${PROJECT_NAME}_core
   src/core/manager.cpp
   src/core/shapers/geometric/jaco.cpp
   src/core/shapers/geometric/snake.cpp
+)
+
+add_library(${PROJECT_NAME}_tf_pose_publisher
+  src/ros/tf_pose_publisher.cpp
+)
+target_compile_features(${PROJECT_NAME}_tf_pose_publisher PUBLIC cxx_std_17)
+target_include_directories(${PROJECT_NAME}_tf_pose_publisher PUBLIC
+  "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+  "$<INSTALL_INTERFACE:include>"
+)
+ament_target_dependencies(${PROJECT_NAME}_tf_pose_publisher
+  geometry_msgs
+  rclcpp
+  tf2_ros
 )
 target_compile_features(${PROJECT_NAME}_core PUBLIC cxx_std_17)
 target_include_directories(${PROJECT_NAME}_core PUBLIC
@@ -78,6 +93,21 @@ target_link_libraries(${PROJECT_NAME}_node
   ${PROJECT_NAME}_ros
 )
 
+add_executable(tf_pose_publisher_node
+  src/ros/tf_pose_publisher_main.cpp
+)
+target_compile_features(tf_pose_publisher_node PUBLIC cxx_std_17)
+target_include_directories(tf_pose_publisher_node PUBLIC
+  "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+  "$<INSTALL_INTERFACE:include>"
+)
+ament_target_dependencies(tf_pose_publisher_node
+  rclcpp
+)
+target_link_libraries(tf_pose_publisher_node
+  ${PROJECT_NAME}_tf_pose_publisher
+)
+
 install(
   DIRECTORY include/
   DESTINATION include
@@ -92,8 +122,10 @@ install(
   TARGETS
     ${PROJECT_NAME}_core
     ${PROJECT_NAME}_ros
+    ${PROJECT_NAME}_tf_pose_publisher
     cartesian_manager_parameters
     ${PROJECT_NAME}_node
+    tf_pose_publisher_node
   EXPORT export_${PROJECT_NAME}
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
@@ -101,7 +133,11 @@ install(
 )
 
 ament_export_include_directories(include)
-ament_export_libraries(${PROJECT_NAME}_core ${PROJECT_NAME}_ros)
+ament_export_libraries(
+  ${PROJECT_NAME}_core
+  ${PROJECT_NAME}_ros
+  ${PROJECT_NAME}_tf_pose_publisher
+)
 ament_export_targets(export_${PROJECT_NAME})
 ament_export_dependencies(
   Eigen3
@@ -111,6 +147,7 @@ ament_export_dependencies(
   rclcpp
   sensor_msgs
   std_msgs
+  tf2_ros
 )
 
 if(BUILD_TESTING)
@@ -129,6 +166,20 @@ if(BUILD_TESTING)
   )
   target_link_libraries(test_cartesian_manager_orientation
     ${PROJECT_NAME}_ros
+  )
+
+  ament_add_gtest(test_tf_pose_publisher
+    test/test_tf_pose_publisher.cpp
+  )
+  ament_target_dependencies(test_tf_pose_publisher
+    extender_msgs
+    geometry_msgs
+    rclcpp
+    tf2_ros
+  )
+  target_link_libraries(test_tf_pose_publisher
+    ${PROJECT_NAME}_ros
+    ${PROJECT_NAME}_tf_pose_publisher
   )
   # the following line skips the linter which checks for copyrights
   # comment the line when a copyright and license is added to all source files
