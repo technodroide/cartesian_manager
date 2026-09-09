@@ -1,5 +1,6 @@
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, TimerAction
+from launch.conditions import IfCondition, UnlessCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import Command, FindExecutable, LaunchConfiguration, PathJoinSubstitution, PythonExpression
 from launch_ros.actions import Node
@@ -9,6 +10,7 @@ def generate_launch_description():
     gui = LaunchConfiguration("gui")
     use_simulation = LaunchConfiguration("use_simulation")
     joystick_config_file = LaunchConfiguration("joystick_config_file")
+    publish_ee_pose_from_tf = LaunchConfiguration("publish_ee_pose_from_tf")
 
     use_actuator_interface = PythonExpression([
         "'false' if '", use_simulation, "' == 'true' else 'true'"
@@ -46,6 +48,11 @@ def generate_launch_description():
             "robot_ip",
             default_value="192.168.1.10",
             description="IP address by which the robot can be reached."
+        ),
+        DeclareLaunchArgument(
+            "publish_ee_pose_from_tf",
+            default_value="true",
+            description="Publish /ee_pose from TF until qontrol_controller provides it.",
         ),
     ]
 
@@ -137,6 +144,16 @@ def generate_launch_description():
         parameters=[controller_config],
     )
 
+
+    tf_pose_publisher_node = Node(
+        package="cartesian_manager",
+        executable="tf_pose_publisher_node",
+        name="tf_pose_publisher",
+        output="screen",
+        parameters=[controller_config, {"use_sim_time": use_simulation}],
+        condition=IfCondition(publish_ee_pose_from_tf),
+    )
+
     joint_state_broadcaster_spawner = Node(
         package="controller_manager",
         executable="spawner",
@@ -209,6 +226,7 @@ def generate_launch_description():
         manager_node,
         joy_node,
         joystick_mapper_launch,
+        tf_pose_publisher_node,
     ]
 
     return LaunchDescription(declared_arguments + nodes_to_start)

@@ -31,7 +31,7 @@ qontrol_explorer:
     # Velocity parameters
     command_max_linear_velocity: 0.05
     topic_max_linear_velocity: /explorer_user_interfaces/rqt_armcontrol/max_linear_speed
-    command_max_angular_velocity: 1.0
+    command_max_angular_velocity: 0.4
     topic_max_angular_velocity: /explorer_user_interfaces/rqt_armcontrol/max_angular_speed
     input_topic_name: /cartesian_command
     regularisation_weight: 1e-2
@@ -112,3 +112,11 @@ cartesian_manager:
           - 2.97
           - 1.2
           - -0.5
+
+
+tf_pose_publisher:
+  ros__parameters:
+    base_frame_id: base_link
+    effector_frame_id: end_effector_link
+    output_topic: /ee_pose
+    publish_rate_hz: 100.0
